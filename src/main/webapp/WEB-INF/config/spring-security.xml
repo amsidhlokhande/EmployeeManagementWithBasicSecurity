@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:oauth2="http://www.springframework.org/schema/security/oauth2"
+	xmlns:security="http://www.springframework.org/schema/security"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+		http://www.springframework.org/schema/security/oauth2 http://www.springframework.org/schema/security/spring-security-oauth2.xsd
+		http://www.springframework.org/schema/security http://www.springframework.org/schema/security/spring-security.xsd">
+
+
+	<!-- OAuth token url mapping with http -->
+	<security:http  pattern="/oauth/token" 	create-session="stateless"
+		authentication-manager-ref="clientAuthenticationManager">
+                <security:intercept-url pattern="/oauth/token"	access="IS_AUTHENTICATED_FULLY"/>
+		<security:anonymous enabled="false" />
+                <security:http-basic entry-point-ref="clientAutheticationEntryPoint" />
+		<security:custom-filter ref="clientCredentialsTokenEndpointFilter"
+			after="BASIC_AUTH_FILTER" />
+	        <security:access-denied-handler ref="oauthAccessDeniedHandler" />
+	</security:http>
+    <security:http pattern="/emp/**" create-session="never" 
+       	entry-point-ref="oauthAuthenticationEntryPoint" 
+	   access-decision-manager-ref="accessDecisionManager">
+	    <security:anonymous enabled="false" />
+	    <security:intercept-url pattern="/emp/**" access="ROLE_APP"/>
+		<security:custom-filter ref="resourceServerFilter"	before="PRE_AUTH_FILTER" />
+		<security:access-denied-handler ref="oauthAccessDeniedHandler" />		
+	</security:http>
+	
+	
+    <bean id="oauthAuthenticationEntryPoint"
+		class="org.springframework.security.oauth2.provider.error.OAuth2AuthenticationEntryPoint">
+		<property name="realmName" value="test"/>
+	</bean>
+	
+	<bean id="clientAutheticationEntryPoint"
+		class="org.springframework.security.oauth2.provider.error.OAuth2AuthenticationEntryPoint">
+		<property name="realmName" value="test/client"/>
+		<property name="typeName" value="Basic"/>
+	</bean>
+	
+	<bean id="oauthAccessDeniedHandler"
+		class="org.springframework.security.oauth2.provider.error.OAuth2AccessDeniedHandler" />
+	
+	<bean id="clientCredentialsTokenEndpointFilter"
+		class="org.springframework.security.oauth2.provider.client.ClientCredentialsTokenEndpointFilter">
+		<property name="authenticationManager" ref="clientAuthenticationManager"/>
+	</bean>
+	
+	<bean id="accessDecisionManager" class="org.springframework.security.access.vote.UnanimousBased">
+		<constructor-arg>
+			<list>
+				<bean class="org.springframework.security.oauth2.provider.vote.ScopeVoter"/>
+				<bean class="org.springframework.security.access.vote.RoleVoter"/>
+				<bean class="org.springframework.security.access.vote.AuthenticatedVoter"/>
+				<bean class="org.springframework.security.web.access.expression.WebExpressionVoter"/>
+			</list>
+		</constructor-arg>
+	</bean>
+	
+	<security:authentication-manager id="clientAuthenticationManager">
+		<security:authentication-provider user-service-ref="clientDetailsUserService" />
+	</security:authentication-manager>
+	
+	<security:authentication-manager alias="authenticationManager">
+	    <security:authentication-provider>
+	       <security:user-service>
+	          <security:user name="beingjavaguys" password="spring@java" authorities="ROLE_APP"/>
+	          <security:user name="admin" password="admin" authorities="ROLE_APP"/>
+	       </security:user-service>
+	    </security:authentication-provider>
+	</security:authentication-manager>
+		
+	<bean id="clientDetailsUserService"
+		class="org.springframework.security.oauth2.provider.client.ClientDetailsUserDetailsService">
+		<constructor-arg ref="clientDetailsService"/>
+	</bean>
+	
+	<bean id="tokenStore"
+		class="org.springframework.security.oauth2.provider.token.InMemoryTokenStore" />
+               
+	<bean id="oauth2TokenServices"
+		class="org.springframework.security.oauth2.provider.token.DefaultTokenServices">
+		<property name="tokenStore" ref="tokenStore" />
+		<property name="supportRefreshToken" value="true" />
+		<property name="accessTokenValiditySeconds" value="120" />
+		<property name="clientDetailsService" ref="clientDetailsService" />
+		
+	</bean>
+	
+	 <bean id="userApprovalHandler"
+		class="org.springframework.security.oauth2.provider.approval.TokenServicesUserApprovalHandler">
+		<property name="tokenServices" ref="oauth2TokenServices" />
+	</bean>
+	
+	<oauth2:authorization-server
+		client-details-service-ref="clientDetailsService" token-services-ref="oauth2TokenServices"
+		user-approval-handler-ref="userApprovalHandler">
+		<oauth2:authorization-code />
+		<oauth2:implicit />
+		<oauth2:refresh-token />
+		<oauth2:client-credentials />
+		<oauth2:password/>
+	</oauth2:authorization-server>
+	
+	<oauth2:resource-server id="resourceServerFilter"
+	      resource-id="test" token-services-ref="oauth2TokenServices" />
+	
+	<oauth2:client-details-service id="clientDetailsService">
+		<oauth2:client client-id="restapp"
+			authorized-grant-types="authorization_code,client_credentials" 
+			authorities="ROLE_APP" scope="read,write,trust"	secret="secret" />
+		<oauth2:client client-id="restapp"
+		         authorized-grant-types="password,authorization_code,refresh_token,implicit"
+			 secret="restapp" authorities="ROLE_APP" />
+	</oauth2:client-details-service>
+	
+	<security:global-method-security 
+	             pre-post-annotations="enabled" proxy-target-class="true">
+		     
+		     <security:expression-handler ref="oauthExpressionHandler"/>
+	</security:global-method-security>
+
+	<oauth2:expression-handler id="oauthExpressionHandler" />
+	<oauth2:web-expression-handler id="oauthWebExpressionHandler" />
+
+</beans>
